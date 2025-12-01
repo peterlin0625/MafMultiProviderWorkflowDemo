@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="MafDemo.Console/MafDemo.Console.csproj" />
+  <Project Path="MafDemo.Core/MafDemo.Core.csproj" />
+</Solution>
