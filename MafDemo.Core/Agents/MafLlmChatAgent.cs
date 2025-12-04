@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MafDemo.Core.Llm;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace MafDemo.Core.Agents;
 
@@ -12,21 +13,23 @@ public sealed class MafLlmChatAgent : IChatAgent
 {
     private readonly ILlmProvider _provider;
     private readonly ILogger<MafLlmChatAgent> _logger;
+    private readonly string _defaultSystemPrompt;
 
     public string Name { get; }
-
-    private readonly string _defaultSystemPrompt =
-        "你是一個熟悉 .NET 10、MAF (Microsoft Agent Framework)、MCP、" +
-        "以及多雲 LLM Provider 的技術顧問，回答請用繁體中文，" +
-        "保持專業但語氣友善、簡潔。";
-
+     
     public MafLlmChatAgent(
         ILlmProvider provider,
         ILogger<MafLlmChatAgent> logger,
+        PromptOptions promptOptions,
         string? name = null)
     {
         _provider = provider;
         _logger = logger;
+
+        _defaultSystemPrompt = string.IsNullOrWhiteSpace(promptOptions.DefaultSystemPrompt)
+            ? "你是一個熟悉 .NET 10、MAF...（內建備援）"
+            : promptOptions.DefaultSystemPrompt;
+
         Name = name ?? $"MafAgent-{provider.Name}";
     }
 

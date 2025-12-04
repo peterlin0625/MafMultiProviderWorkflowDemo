@@ -1,32 +1,37 @@
 ﻿using MafDemo.Core;
-using MafDemo.Core.Agents;
-using MafDemo.Core.Llm;
+using MafDemo.Core.Modes;
+using Serilog;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
+
+// 建立啟動期 Logger（只用 Console），避免啟動錯誤沒 log
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.Console()
+    .CreateLogger();
+
 
 var builder = Host.CreateDefaultBuilder(args)
     .ConfigureAppConfiguration((context, config) =>
     {
         config.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
     })
+    .UseSerilog((context, services, loggerConfiguration) =>
+    {
+        loggerConfiguration
+            .ReadFrom.Configuration(context.Configuration)  // 讀取 appsettings.json 中的 Serilog section
+            .ReadFrom.Services(services)                    // 讓 ILogger<T> 內的 DI 結構可用來 enrich
+            .Enrich.FromLogContext();
+    })
     .ConfigureServices((context, services) =>
     {
         var configuration = context.Configuration;
 
-        // 註冊 LLM Providers + Agent 工廠
+        // LLM Providers + Agents + Workflows + Modes
         services.AddLlmProviders(configuration);
-
-        // 後續會在這裡再加上 MAF Workflows 相關註冊
-    })
-    .ConfigureLogging(logging =>
-    {
-        logging.ClearProviders();
-        logging.AddConsole();
     });
 
 var host = builder.Build();
@@ -34,84 +39,60 @@ var host = builder.Build();
 using var scope = host.Services.CreateScope();
 var services = scope.ServiceProvider;
 
+var modes = services.GetRequiredService<IEnumerable<IAppMode>>()
+                    .OrderBy(m => m.Id)
+                    .ToList();
 
-//// 這裡先看一下 Options
-//var llmOptions = services.GetRequiredService<IOptions<LlmOptions>>().Value;
-
-//Console.WriteLine("=== Debug LlmOptions ===");
-//Console.WriteLine($"DefaultProvider = {llmOptions.DefaultProvider}");
-//Console.WriteLine($"Providers Count = {llmOptions.Providers.Count}");
-//foreach (var kvp in llmOptions.Providers)
-//{
-//    Console.WriteLine($"Provider: {kvp.Key}, BaseUrl={kvp.Value.BaseUrl}, Model={kvp.Value.Model}");
-//}
-//Console.WriteLine("========================");
-
-var options = services.GetRequiredService<Microsoft.Extensions.Options.IOptions<LlmOptions>>().Value;
-var agentFactory = services.GetRequiredService<IAgentFactory>();
-
-Console.WriteLine("=== Multi-Provider + MafLlmChatAgent 測試 ===");
-Console.WriteLine("已設定的 Providers:");
-
-foreach (var kvp in options.Providers)
+if (!modes.Any())
 {
-    Console.WriteLine($" - {kvp.Key}");
-}
-
-Console.WriteLine();
-Console.WriteLine($"預設 Provider: {options.DefaultProvider}");
-Console.Write("輸入要使用的 Provider 名稱（直接 Enter 使用預設）：");
-
-var providerInput = Console.ReadLine();
-var providerName = string.IsNullOrWhiteSpace(providerInput)
-    ? options.DefaultProvider
-    : providerInput.Trim();
-
-IChatAgent agent;
-
-try
-{
-    if (string.Equals(providerName, options.DefaultProvider, StringComparison.OrdinalIgnoreCase))
-    {
-        agent = agentFactory.CreateDefaultChatAgent();
-    }
-    else
-    {
-        agent = agentFactory.CreateChatAgent(providerName);
-    }
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"建立 Agent 失敗：{ex.Message}");
+    Console.WriteLine("沒有可用的模式（IAppMode）。請確認 DI 註冊。");
     return;
 }
 
-Console.WriteLine();
-Console.WriteLine($"使用 Provider：{providerName}，Agent：{agent.Name}");
-Console.Write("請輸入你的問題：");
-
-var question = Console.ReadLine();
-
-if (string.IsNullOrWhiteSpace(question))
+while (true)
 {
-    Console.WriteLine("未輸入問題，程式結束。");
-    return;
-}
+    Console.WriteLine();
+    Console.WriteLine("=== MafMultiProviderWorkflowDemo ===");
+    Console.WriteLine("請選擇要執行的模式：");
+    foreach (var mode in modes)
+    {
+        Console.WriteLine($"  {mode.Id}. {mode.DisplayName}");
+    }
+    Console.WriteLine("  q. 離開");
+    Console.Write("請輸入選項：");
 
-try
-{
-    var answer = await agent.RunAsync(question!);
+    var choice = Console.ReadLine();
+
+    if (string.IsNullOrWhiteSpace(choice))
+        continue;
+
+    if (string.Equals(choice.Trim(), "q", StringComparison.OrdinalIgnoreCase))
+    {
+        Console.WriteLine("Bye ~");
+        break;
+    }
+
+    var selected = modes.FirstOrDefault(m =>
+        string.Equals(m.Id, choice.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    if (selected == null)
+    {
+        Console.WriteLine("無效選項，請重新輸入。");
+        continue;
+    }
 
     Console.WriteLine();
-    Console.WriteLine("=== Agent 回覆 ===");
-    Console.WriteLine(answer);
-    Console.WriteLine("==================");
+    Console.WriteLine($"== 執行 {selected.DisplayName} ==");
+
+    try
+    {
+        await selected.RunAsync();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"執行模式時發生錯誤：{ex.Message}");
+    }
+ 
 }
-catch (NotImplementedException nie)
-{
-    Console.WriteLine($"這個 Provider 尚未實作完整呼叫邏輯：{nie.Message}");
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"呼叫 Agent 時發生錯誤：{ex.Message}");
-}
+
+Log.CloseAndFlush();

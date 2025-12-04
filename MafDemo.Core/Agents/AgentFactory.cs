@@ -7,13 +7,16 @@ public sealed class AgentFactory : IAgentFactory
 {
     private readonly ILlmProviderFactory _providerFactory;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly PromptOptions _promptOptions;
 
     public AgentFactory(
         ILlmProviderFactory providerFactory,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        PromptOptions promptOptions)
     {
         _providerFactory = providerFactory;
         _loggerFactory = loggerFactory;
+        _promptOptions = promptOptions;
     }
 
     public IChatAgent CreateChatAgent(string providerName, string? agentName = null)
@@ -21,7 +24,7 @@ public sealed class AgentFactory : IAgentFactory
         var provider = _providerFactory.GetProvider(providerName);
         var logger = _loggerFactory.CreateLogger<MafLlmChatAgent>();
 
-        return new MafLlmChatAgent(provider, logger, agentName);
+        return new MafLlmChatAgent(provider, logger, _promptOptions, agentName);
     }
 
     public IChatAgent CreateDefaultChatAgent(string? agentName = null)
@@ -29,6 +32,6 @@ public sealed class AgentFactory : IAgentFactory
         var provider = _providerFactory.GetDefaultProvider();
         var logger = _loggerFactory.CreateLogger<MafLlmChatAgent>();
 
-        return new MafLlmChatAgent(provider, logger, agentName);
+        return new MafLlmChatAgent(provider, logger, _promptOptions, agentName);
     }
 }
