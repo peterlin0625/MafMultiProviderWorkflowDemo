@@ -4,15 +4,15 @@ using System.Text;
 
 namespace CloudPrint.DataApi.Security;
 
-public class HmacAuthMiddleware : IMiddleware
+public class HmacAuthReplayAttackMiddleware : IMiddleware
 {
      
     private readonly HmacAuthOptions _options;
-    private readonly ILogger<HmacAuthMiddleware> _logger;
+    private readonly ILogger<HmacAuthReplayAttackMiddleware> _logger;
 
-    public HmacAuthMiddleware(
+    public HmacAuthReplayAttackMiddleware(
         IOptions<HmacAuthOptions> options, 
-        ILogger<HmacAuthMiddleware> logger)
+        ILogger<HmacAuthReplayAttackMiddleware> logger)
     {
         _options = options.Value; 
         _logger = logger;

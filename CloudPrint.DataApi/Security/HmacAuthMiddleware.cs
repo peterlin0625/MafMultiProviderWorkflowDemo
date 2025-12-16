@@ -5,19 +5,19 @@ using System.Text;
 
 namespace CloudPrint.DataApi.Security;
 
-public class HmacAuthReplayAttackMiddleware : IMiddleware
+public class HmacAuthMiddleware : IMiddleware
 {
     private const int CLOCK_SKEW_SECONDS = 120;
     private const int NONCE_BUFFER_SECONDS = 60; // buffer
 
     private readonly HmacAuthOptions _options;
-    private readonly ILogger<HmacAuthReplayAttackMiddleware> _logger;
+    private readonly ILogger<HmacAuthMiddleware> _logger;
     private readonly IMemoryCache _cache;
 
-    public HmacAuthReplayAttackMiddleware(
+    public HmacAuthMiddleware(
         IOptions<HmacAuthOptions> options,
         IMemoryCache cache,
-        ILogger<HmacAuthReplayAttackMiddleware> logger)
+        ILogger<HmacAuthMiddleware> logger)
     {
         _options = options.Value;
         _cache = cache;
