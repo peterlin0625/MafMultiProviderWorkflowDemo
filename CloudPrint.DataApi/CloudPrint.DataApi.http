@@ -1,0 +1,6 @@
+@CloudPrint.DataApi_HostAddress = http://localhost:5148
+
+GET {{CloudPrint.DataApi_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

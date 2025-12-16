@@ -17,6 +17,10 @@ public sealed class HandoffsContext
     /// </summary>
     public string? TargetExpertId { get; set; }
 
+    // 🆕 MCP Tool 的原始 JSON 結果
+    public string? ToolResultJson { get; set; }
+
+
     /// <summary>
     /// 被指派專家的回答
     /// </summary>

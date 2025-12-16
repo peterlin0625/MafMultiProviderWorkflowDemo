@@ -1,4 +1,8 @@
 <Solution>
+  <Project Path="CloudPrint.DataApi/CloudPrint.DataApi.csproj" Id="27064192-ec32-4a40-b51f-55e7909556ed" />
+  <Project Path="CloudPrint.McpServer/CloudPrint.McpServer.csproj" Id="41c77623-ad0f-4565-8715-ffdf3fe234ff" />
+  <Project Path="MafDemo.Api/MafDemo.Api.csproj" Id="104d9a03-4cf0-48e2-8e5c-c8cff6950679" />
   <Project Path="MafDemo.Console/MafDemo.Console.csproj" />
   <Project Path="MafDemo.Core/MafDemo.Core.csproj" />
+  <Project Path="MafDemo.McpClientApp/MafDemo.McpClientApp.csproj" Id="88fc8a8e-4c05-4178-936f-c70d853d1ed7" />
 </Solution>

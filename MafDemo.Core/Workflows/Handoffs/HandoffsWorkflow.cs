@@ -8,6 +8,7 @@ namespace MafDemo.Core.Workflows.Handoffs;
 public sealed class HandoffsWorkflow : ISequentialWorkflow<HandoffsContext>
 {
     private readonly RoutingStep _routingStep;
+    private readonly HandoffsToolCallingStep _toolStep;
     private readonly HandoffStep _handoffStep;
     private readonly HandoffsMergeStep _mergeStep;
     private readonly ILogger<HandoffsWorkflow> _logger;
@@ -16,11 +17,13 @@ public sealed class HandoffsWorkflow : ISequentialWorkflow<HandoffsContext>
 
     public HandoffsWorkflow(
         RoutingStep routingStep,
+        HandoffsToolCallingStep toolStep,
         HandoffStep handoffStep,
         HandoffsMergeStep mergeStep,
         ILogger<HandoffsWorkflow> logger)
     {
         _routingStep = routingStep;
+        _toolStep = toolStep;
         _handoffStep = handoffStep;
         _mergeStep = mergeStep;
         _logger = logger;
@@ -31,6 +34,11 @@ public sealed class HandoffsWorkflow : ISequentialWorkflow<HandoffsContext>
         _logger.LogInformation("HandoffsWorkflow: 開始執行。");
 
         await _routingStep.ExecuteAsync(context, cancellationToken);
+
+        // 🆕 插入 MCP Tool 呼叫節點
+        await _toolStep.ExecuteAsync(context, cancellationToken);
+
+
         await _handoffStep.ExecuteAsync(context, cancellationToken);
         await _mergeStep.ExecuteAsync(context, cancellationToken);
 

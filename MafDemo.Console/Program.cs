@@ -1,10 +1,13 @@
 ﻿using MafDemo.Core;
+using MafDemo.Core.Llm;
 using MafDemo.Core.Modes;
-using Serilog;
+using MafDemo.Core.Workflows;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Serilog;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
@@ -39,60 +42,51 @@ var host = builder.Build();
 using var scope = host.Services.CreateScope();
 var services = scope.ServiceProvider;
 
-var modes = services.GetRequiredService<IEnumerable<IAppMode>>()
-                    .OrderBy(m => m.Id)
-                    .ToList();
+ 
+var factory = host.Services.GetRequiredService<IWorkflowFactory>();
+var llmOptions = host.Services.GetRequiredService<IOptions<LlmOptions>>().Value;
 
-if (!modes.Any())
-{
-    Console.WriteLine("沒有可用的模式（IAppMode）。請確認 DI 註冊。");
-    return;
-}
 
 while (true)
 {
+    Console.WriteLine("=== .NET 10 + MAF Agent + Multi-Provider LLM Demo ===");
+    Console.WriteLine($"目前 Default Provider：{llmOptions.DefaultProvider}");
     Console.WriteLine();
-    Console.WriteLine("=== MafMultiProviderWorkflowDemo ===");
-    Console.WriteLine("請選擇要執行的模式：");
+
+    Console.WriteLine("請選擇模式（輸入編號）：");
+
+    var modes = factory.GetAllModes().ToList();
     foreach (var mode in modes)
     {
         Console.WriteLine($"  {mode.Id}. {mode.DisplayName}");
     }
     Console.WriteLine("  q. 離開");
-    Console.Write("請輸入選項：");
+    Console.WriteLine();
 
-    var choice = Console.ReadLine();
+    Console.Write("你的選擇：");
+    var input = Console.ReadLine();
 
-    if (string.IsNullOrWhiteSpace(choice))
-        continue;
-
-    if (string.Equals(choice.Trim(), "q", StringComparison.OrdinalIgnoreCase))
+    if (string.IsNullOrWhiteSpace(input) ||
+        string.Equals(input.Trim(), "q", StringComparison.OrdinalIgnoreCase))
     {
-        Console.WriteLine("Bye ~");
+        Console.WriteLine("再見～");
         break;
     }
 
-    var selected = modes.FirstOrDefault(m =>
-        string.Equals(m.Id, choice.Trim(), StringComparison.OrdinalIgnoreCase));
-
-    if (selected == null)
-    {
-        Console.WriteLine("無效選項，請重新輸入。");
-        continue;
-    }
-
-    Console.WriteLine();
-    Console.WriteLine($"== 執行 {selected.DisplayName} ==");
-
     try
     {
-        await selected.RunAsync();
+        var mode = factory.GetMode(input.Trim());
+        await mode.RunAsync(CancellationToken.None);
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"執行模式時發生錯誤：{ex.Message}");
+        Console.WriteLine($"選擇模式時發生錯誤：{ex.Message}");
     }
- 
+
+    Console.WriteLine();
+    Console.WriteLine("按任意鍵回到主選單...");
+    Console.ReadKey();
+    Console.Clear();
 }
 
 Log.CloseAndFlush();

@@ -1,0 +1,52 @@
+[
+  {
+    "GroupId": 13600943,
+    "Name": "Holiday",
+    "ShowName": "節令主題",
+    "Sex": "Female",
+    "Styles": [
+      {
+        "StyleId": "200000000000001224",
+        "Name": "NYE Sparks",
+        "ShowName": "跨年煙火風格",
+        "Thumb": "https://cdn.perfectcorp.com/cms/b8045531-c846-442e-b352-c3a431056128/1721374445359/NYE Spark.jpg"
+      },
+      {
+        "StyleId": "200000000000001270",
+        "Name": "Gold Whisper",
+        "ShowName": "金色低語風格",
+        "Thumb": "https://cdn.perfectcorp.com/cms/d67aada6-6c38-4694-94a8-2fb8b6813622/1721363553809/Angel.png"
+      },
+      {
+        "StyleId": "206227835667350689",
+        "Name": "Jingle Bell",
+        "ShowName": "鈴兒響叮噹風格",
+        "Thumb": "https://cdn.perfectcorp.com/cms/33703a8a-f729-4e72-ba69-a5d86cfc4132/1722561519289/Jingle Bell.jpg"
+      },
+      {
+        "StyleId": "219691778809268601",
+        "Name": "Christmas Couture",
+        "ShowName": "聖誕時尚風格",
+        "Thumb": "https://cdn.perfectcorp.com/cms/9bf3e9eb-38ee-4977-b14c-d9e14cd4efde/1729843989230/Artistic_Holiday02_West.jpg"
+      },
+      {
+        "StyleId": "206227835667350996",
+        "Name": "Sweater Weather",
+        "ShowName": "毛衣季節風格",
+        "Thumb": "https://cdn.perfectcorp.com/cms/9f80ba3a-3702-4795-b1ef-c2bd3f6ca995/1729849007421/Artistic_Holiday01_West.jpg"
+      },
+      {
+        "StyleId": "219691778809268784",
+        "Name": "Midnight Marvel",
+        "ShowName": "午夜奇跡風格",
+        "Thumb": "https://cdn.perfectcorp.com/cms/e73b0ccc-0823-4b48-acd7-e197cc74c46c/1730263189108/New Year_02.png"
+      },
+      {
+        "StyleId": "219691778809268616",
+        "Name": "Classic Countdown",
+        "ShowName": "經典倒數風格",
+        "Thumb": "https://cdn.perfectcorp.com/cms/9f5a52a3-b603-41c3-aa1f-1a9f0baee53e/1730263137826/New Year_01.png"
+      }
+    ]
+  }
+]

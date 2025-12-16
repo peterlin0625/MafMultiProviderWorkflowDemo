@@ -22,6 +22,13 @@ public sealed class QaSequentialWorkflow : ISequentialWorkflow<QaSequentialConte
 
     public async Task RunAsync(QaSequentialContext context, CancellationToken cancellationToken = default)
     {
+        _logger.LogInformation("QaSequentialWorkflow: 準備執行 {Count} 個步驟。", _steps.Count);
+
+        if (_steps.Count == 0)
+        {
+            _logger.LogWarning("QaSequentialWorkflow: _steps 為空，請確認是否有註冊 IWorkflowStep<QaSequentialContext>。");
+        }
+
         foreach (var step in _steps)
         {
             _logger.LogInformation("開始執行步驟：{StepName}", step.Name);

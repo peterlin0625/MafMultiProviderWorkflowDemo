@@ -1,4 +1,5 @@
 ﻿using MafDemo.Core.Agents;
+using MafDemo.Core.Json;
 using MafDemo.Core.Repository;
 using MafDemo.Core.Workflows.Sequential;
 using Microsoft.Extensions.Logging;
@@ -15,6 +16,7 @@ public sealed class GroupchatWorkflow : ISequentialWorkflow<GroupchatContext>
 {
     private readonly IAgentFactory _agentFactory;
     private readonly IExpertPromptRepository _promptRepo;
+    private readonly LlmJsonSanitizer _jsonSanitizer;
     private readonly ILogger<GroupchatWorkflow> _logger;
 
     // 這裡控制最大輪數：每輪 4 個專家 + 1 次 Supervisor 判斷
@@ -25,10 +27,12 @@ public sealed class GroupchatWorkflow : ISequentialWorkflow<GroupchatContext>
     public GroupchatWorkflow(
         IAgentFactory agentFactory,
         IExpertPromptRepository promptRepo,
+        LlmJsonSanitizer jsonSanitizer,
         ILogger<GroupchatWorkflow> logger)
     {
         _agentFactory = agentFactory;
         _promptRepo = promptRepo;
+        _jsonSanitizer = jsonSanitizer;
         _logger = logger;
     }
 
@@ -143,7 +147,8 @@ public sealed class GroupchatWorkflow : ISequentialWorkflow<GroupchatContext>
             _logger.LogInformation("GroupchatWorkflow: Supervisor 第 {Round} 輪決策原始內容 = {Decision}",
                 round, supervisorRaw);
 
-            var decision = ParseSupervisorDecision(supervisorRaw);
+            //var decision = ParseSupervisorDecision(supervisorRaw);
+            var decision = await ParseSupervisorDecisionWithRetryAsync(supervisorRaw, cancellationToken);
 
             if (string.Equals(decision.Action, "finalize", StringComparison.OrdinalIgnoreCase))
             {
@@ -176,7 +181,9 @@ public sealed class GroupchatWorkflow : ISequentialWorkflow<GroupchatContext>
 
         context.SupervisorRawDecision = finalRaw;
 
-        var finalDecision = ParseSupervisorDecision(finalRaw);
+        //var finalDecision = ParseSupervisorDecision(finalRaw);
+        var finalDecision = await ParseSupervisorDecisionWithRetryAsync(finalRaw, cancellationToken);
+
 
         context.FinalSummary = !string.IsNullOrWhiteSpace(finalDecision.SummaryJson)
             ? finalDecision.SummaryJson
@@ -298,23 +305,57 @@ public sealed class GroupchatWorkflow : ISequentialWorkflow<GroupchatContext>
         return sb.ToString();
     }
 
-    /// <summary>
-    /// 解析 Supervisor 回傳的 JSON，抓出 action / reason / summary（summary 以 JSON 字串形式保存）。
-    /// </summary>
-    private SupervisorDecision ParseSupervisorDecision(string? raw)
+
+    private async Task<SupervisorDecision> ParseSupervisorDecisionWithRetryAsync(
+    string? raw,
+    CancellationToken cancellationToken)
     {
         var decision = new SupervisorDecision();
 
         if (string.IsNullOrWhiteSpace(raw))
         {
+            _logger.LogWarning("GroupchatWorkflow: Supervisor 決策為空。");
+            return decision;
+        } 
+
+        // ✅ 第一次：用新的 LlmJsonSanitizer 做前處理
+        var sanitized = _jsonSanitizer.Sanitize(raw);
+
+        if (TryParseSupervisorJson(sanitized, out decision))
+        {
+            _logger.LogInformation("GroupchatWorkflow: 使用 LlmJsonSanitizer 第一次解析成功。");
             return decision;
         }
 
+        _logger.LogWarning("GroupchatWorkflow: 第一次解析 Supervisor JSON 失敗，嘗試請 LLM 協助修正。");
+
+
+
+        // 第二次：請 LLM 幫忙修 JSON
+        var fixedJson = await FixJsonWithAgentAsync(raw, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(fixedJson))
+        {
+            var sanitized2 = _jsonSanitizer.Sanitize(fixedJson);
+            if (TryParseSupervisorJson(sanitized2, out decision))
+            {
+                _logger.LogInformation("GroupchatWorkflow: 經 LLM 修正後的 JSON 解析成功。");
+                return decision;
+            }
+        }
+
+        _logger.LogError("GroupchatWorkflow: 經過 LLM 修正後仍無法解析 Supervisor JSON，將使用 raw 做 SummaryJson。");
+        decision.SummaryJson = raw;
+        return decision;
+    }
+
+
+    private bool TryParseSupervisorJson(string json, out SupervisorDecision decision)
+    {
+        decision = new SupervisorDecision();
+
         try
         {
-            var jsonPart = ExtractJson(raw);
-
-            using var doc = JsonDocument.Parse(jsonPart);
+            using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
             if (root.TryGetProperty("action", out var actionProp) &&
@@ -333,40 +374,60 @@ public sealed class GroupchatWorkflow : ISequentialWorkflow<GroupchatContext>
                 summaryProp.ValueKind != JsonValueKind.Undefined &&
                 summaryProp.ValueKind != JsonValueKind.Null)
             {
-                // 有 summary 就抓原始 JSON
                 decision.SummaryJson = summaryProp.GetRawText();
             }
             else
             {
-                // ✅ 沒有 summary，就把整個 jsonPart 當成 summary，至少不是空的
-                decision.SummaryJson = jsonPart;
+                // 若沒有 summary，就把整個 json 當 summary
+                decision.SummaryJson = json;
             }
+
+            return true;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "GroupchatWorkflow: 解析 Supervisor 決策失敗，使用預設決策。");
-
-            // ✅ 解析整段 raw 的 JSON 失敗時，至少把 raw 存進 SummaryJson
-            decision.SummaryJson = raw;
+            _logger.LogWarning(ex, "GroupchatWorkflow: TryParseSupervisorJson 解析失敗。內容 = {Json}", json);
+            return false;
         }
-
-        return decision;
     }
 
-    /// <summary>
-    /// 從整段文字中抽出第一個 '{' 到最後一個 '}' 的 substring 當成 JSON。
-    /// 可處理模型輸出中夾雜的說明文字或 ```json 區塊。
-    /// </summary>
-    private static string ExtractJson(string raw)
+    private async Task<string?> FixJsonWithAgentAsync(string raw, CancellationToken cancellationToken)
     {
-        var first = raw.IndexOf('{');
-        var last = raw.LastIndexOf('}');
-
-        if (first >= 0 && last > first)
+        try
         {
-            return raw.Substring(first, last - first + 1);
-        }
+            var agent = _agentFactory.CreateDefaultChatAgent("JsonFixerAgent");
 
-        return raw;
+            var prompt = $@"
+                你會收到一段應該是 JSON 的文字，但目前無法被 System.Text.Json.JsonDocument.Parse 解析。
+
+                請你只做以下幾件事：
+                1. 修正語法讓它成為合法的 JSON。
+                2. 保留原本的欄位結構與內容（action / reason / summary...）。
+                3. 不要加任何說明文字。
+                4. 不要加 ```json 或 ```，只輸出 JSON 物件本身。
+
+                原始內容如下：
+                {raw}
+                ";
+
+            var answer = await agent.RunAsync(prompt, cancellationToken);
+            var fixedText = answer?.Trim();
+
+            _logger.LogInformation("GroupchatWorkflow: JsonFixerAgent 修正後內容 = {Fixed}", fixedText);
+
+            return fixedText;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GroupchatWorkflow: 呼叫 JsonFixerAgent 修正 JSON 時發生例外。");
+            return null;
+        }
+    }
+
+
+   
+    private string ExtractJsonOrFallback(string raw)
+    {
+        return _jsonSanitizer.Sanitize(raw);
     }
 }

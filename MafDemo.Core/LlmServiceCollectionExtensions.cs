@@ -1,5 +1,8 @@
 ﻿using MafDemo.Core.Agents;
+using MafDemo.Core.Execution;
+using MafDemo.Core.Json;
 using MafDemo.Core.Llm;
+using MafDemo.Core.Mcp;
 using MafDemo.Core.Modes;
 using MafDemo.Core.Repository;
 using MafDemo.Core.Workflows;
@@ -55,6 +58,8 @@ public static class LlmServiceCollectionExtensions
 
             return promptOptions;
         });
+
+        services.AddSingleton<LlmJsonSanitizer>();
 
         services.AddSingleton<ILlmProviderFactory, LlmProviderFactory>();
 
@@ -188,6 +193,70 @@ public static class LlmServiceCollectionExtensions
         services.AddTransient<IAppMode, HandoffsWorkflowMode>();
         services.AddTransient<IAppMode, GroupchatWorkflowMode>();
 
+        // Workflow Factory
+        services.AddSingleton<IWorkflowFactory, WorkflowFactory>();
+
         return services;
     }
+
+    public static IServiceCollection AddCoreExecutionServices(this IServiceCollection services)
+    {
+        // Simple Chat
+        services.AddTransient<SimpleChatExecutionService>();
+
+        // 模式 2：Sequential QA
+        services.AddTransient<QaSequentialExecutionService>();
+
+        // 模式 3：Concurrent Review
+        services.AddTransient<ConcurrentReviewExecutionService>();
+
+        // 模式 4：Handoffs
+        services.AddTransient<HandoffsExecutionService>();
+
+        // 模式 5：Groupchat
+        services.AddTransient<GroupchatExecutionService>();
+
+        return services;
+    }
+
+    public static IServiceCollection AddCoreServices(this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        // 這裡放「跟 Workflow / Prompt / Runner 有關」的註冊，
+        // 基本上就是你原本在 Console Program.cs 裡有的那些東西，搬過來這裡。
+
+        // ✅ Prompt 儲存庫（讀 .md 專家檔的那個）
+        services.AddSingleton<IExpertPromptRepository, ExpertPromptRepository>();
+
+        // ✅ Workflow Runner
+        services.AddTransient<IWorkflowRunner, WorkflowRunner>();
+
+        services.AddTransient<RoutingStep>();
+        services.AddTransient<HandoffsToolCallingStep>();
+        services.AddTransient<HandoffStep>();
+        services.AddTransient<HandoffsMergeStep>();
+
+        // ✅ 各種 Workflow，本來在 Console 會註冊的那幾個：
+        services.AddTransient<ISequentialWorkflow<QaSequentialContext>, QaSequentialWorkflow>();
+        services.AddTransient<ISequentialWorkflow<ConcurrentReviewContext>, ConcurrentReviewWorkflow>();
+        services.AddTransient<ISequentialWorkflow<HandoffsContext>, HandoffsWorkflow>();
+        services.AddTransient<ISequentialWorkflow<GroupchatContext>, GroupchatWorkflow>();
+         
+        services.AddTransient<IWorkflowStep<QaSequentialContext>, RewriteQuestionStep>();
+        services.AddTransient<IWorkflowStep<QaSequentialContext>, AnswerQuestionStep>();
+        services.AddTransient<IWorkflowStep<QaSequentialContext>, RefineAnswerStep>();
+
+
+        // （如果你有別的 Workflow，比如 SimpleChat 用不到 Workflow，就可以不用註冊）
+
+        // MCP Options
+        services.Configure<McpOptions>(configuration.GetSection("Mcp"));
+
+        // MCP Http Caller
+        services.AddHttpClient<HttpMcpToolCaller>();
+        services.AddTransient<IMcpToolCaller, HttpMcpToolCaller>();
+
+        return services;
+    }
+
 }

@@ -11,6 +11,8 @@ public sealed class LlmOptions
     /// </summary>
     public string DefaultProvider { get; set; } = "Mistral";
 
+    public string DefaultModel { get; set; } = "mistral-small-latest";
+
     /// <summary>
     /// 各 Provider 的設定
     /// </summary>
@@ -19,6 +21,8 @@ public sealed class LlmOptions
 
 public sealed class LlmProviderOptions
 {
+    public string Type { get; set; } = string.Empty;   // "Mistral" / "OpenAI" / ...
+
     /// <summary>
     /// 例如 API Key、Bearer Token…
     /// </summary>
