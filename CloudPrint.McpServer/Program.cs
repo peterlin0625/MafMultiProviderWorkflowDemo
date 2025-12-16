@@ -1,5 +1,6 @@
 ﻿using CloudPrint.McpServer.DataApi;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.AspNetCore;
 
@@ -16,6 +17,14 @@ builder.Services
     .AddMcpServer()
     .WithToolsFromAssembly()
     .WithHttpTransport();
+
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.ListenAnyIP(7282, listenOptions =>
+    {
+        listenOptions.UseHttps(); // 開發環境會使用 dev cert；生產請指定 PFX
+    });
+});
 
 var app = builder.Build();
 
