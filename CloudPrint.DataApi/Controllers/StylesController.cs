@@ -16,6 +16,7 @@ public class StylesController : ControllerBase
     }
 
     [HttpGet]
+    [Route("All")]
     public async Task<IEnumerable<StyleGroup>> GetAllStyles()
     {
         var path = Path.Combine(_env.ContentRootPath, "mock-data.json");

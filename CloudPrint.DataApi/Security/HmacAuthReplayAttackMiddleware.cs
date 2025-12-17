@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Options;
+﻿using CommonLibrary.Security;
+using Microsoft.Extensions.Options;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -70,15 +71,23 @@ public class HmacAuthReplayAttackMiddleware : IMiddleware
             context.Request.Body.Position = 0;
         }
 
-        var bodyHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(body)));
+        //var bodyHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(body)));
 
         // 計算簽章
-        var signingString = $"{ts}:{context.Request.Method}:{context.Request.Path}:{bodyHash}";
-        var keyBytes = Encoding.UTF8.GetBytes(_options.SecretKey);
-        var hmac = new HMACSHA256(keyBytes);
-        var computedSig = Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes(signingString)));
+        //var signingString = $"{ts}:{context.Request.Method}:{context.Request.Path}:{bodyHash}";
+        //var keyBytes = Encoding.UTF8.GetBytes(_options.SecretKey);
+        //var hmac = new HMACSHA256(keyBytes);
+        //var computedSig = Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes(signingString)));
 
-        if (!computedSig.Equals(sig, StringComparison.OrdinalIgnoreCase))
+        // 計算簽章
+        var computedSigLower = HmacSignature.CreateSignature(
+            _options.SecretKey,
+            ts.ToString(),
+            context.Request.Method,
+            context.Request.Path,
+            body);
+
+        if (!computedSigLower.Equals(sig, StringComparison.OrdinalIgnoreCase))
         {
             context.Response.StatusCode = 401;
             await context.Response.WriteAsync("Invalid Signature");

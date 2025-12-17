@@ -13,7 +13,7 @@ public class GetAllStylesTool
         _api = api;
     }
 
-    [McpServerTool]
+    [McpServerTool(Name = "getAllStyles")]
     public async Task<object> GetAllStyles()
     {
         return await _api.GetAllStylesAsync();

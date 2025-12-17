@@ -13,24 +13,27 @@ public sealed class StyleApiClient
     private readonly HttpClient _http;
     private readonly HmacSigner _signer;
 
+    // Use IHttpClientFactory so the service can be resolved even when a typed
+    // AddHttpClient<StyleApiClient> registration is not present.
     public StyleApiClient(
-        HttpClient http,
+        IHttpClientFactory httpFactory,
         IOptions<DataApiOptions> options)
     {
-        _http = http;
-
         var opt = options.Value;
-        _http.BaseAddress = new Uri(opt.BaseUrl);
+
+        _http = httpFactory.CreateClient();
+        if (!string.IsNullOrEmpty(opt.BaseUrl))
+            _http.BaseAddress = new Uri(opt.BaseUrl);
 
         _signer = new HmacSigner(opt.ApiKey, opt.ApiSecret);
-    } 
+    }
     /// <summary>
     /// 呼叫唯一資料來源：GET /api/styles/all
     /// </summary>
     public async Task<List<StyleGroupDto>> GetAllStylesAsync(
         CancellationToken cancellationToken = default)
     {
-        const string path = "/api/styles/all";
+        const string path = "/styles/all";
 
         // GET 沒有 body
         var sig = _signer.CreateSignature(

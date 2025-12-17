@@ -1,17 +1,20 @@
-﻿using System.Security.Cryptography;
+﻿using System;
+using System.Security.Cryptography;
 using System.Text;
+
+using lib = CommonLibrary.Security;
 
 namespace MafDemo.McpServer.Security;
 
 public sealed class HmacSigner
 {
     private readonly string _apiKey;
-    private readonly byte[] _secretBytes;
+    private readonly string _secretKey;
 
     public HmacSigner(string apiKey, string apiSecret)
     {
         _apiKey = apiKey;
-        _secretBytes = Encoding.UTF8.GetBytes(apiSecret);
+        _secretKey = apiSecret;
     }
 
     public HmacSignature CreateSignature(
@@ -20,21 +23,20 @@ public sealed class HmacSigner
         string body = "")
     {
         var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
-
-        var bodyHash = ComputeSha256(body);
-
-        // ⚠ 完全依照你指定的格式
-        var signingString = $"{timestamp}:{httpMethod}:{path}:{bodyHash}";
-
-        using var hmac = new HMACSHA256(_secretBytes);
-        var signatureBytes = hmac.ComputeHash(Encoding.UTF8.GetBytes(signingString));
-        var signature = Convert.ToHexString(signatureBytes).ToLowerInvariant();
+ 
+        // 計算簽章
+        var computedSigLower = lib.HmacSignature.CreateSignature(
+            _secretKey,
+            timestamp,
+            httpMethod,
+            path,
+            body);
 
         return new HmacSignature
         {
             ApiKey = _apiKey,
             Timestamp = timestamp,
-            Signature = signature
+            Signature = computedSigLower
         };
     }
 
