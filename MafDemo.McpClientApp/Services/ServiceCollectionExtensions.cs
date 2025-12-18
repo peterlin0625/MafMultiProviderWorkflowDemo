@@ -1,8 +1,12 @@
-﻿using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
+﻿using MafDemo.McpClientApp.Adapters;
 using MafDemo.McpClientApp.Options;
+using MafDemo.McpClientApp.Policies;
+using MafDemo.McpClientApp.Runtime;
 using MafDemo.McpClientApp.Services;
-using MafDemo.McpClientApp.Workflows;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using ModelContextProtocol.Client;
 
 namespace MafDemo.McpClientApp.Services;
 
@@ -11,14 +15,43 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddMcpClientServices(
         this IServiceCollection services,
         IConfiguration config)
-    {
-        // 正確的 options 設定用法 ↓↓↓
+    { 
+
         services.Configure<CloudPrintMcpClientOptions>(
             config.GetSection("CloudPrint:McpClient"));
 
+        // MCP Client  
+        services.AddSingleton<McpClient>(sp =>
+        {
+            var options = sp
+                .GetRequiredService<IOptions<CloudPrintMcpClientOptions>>()
+                .Value;
+
+            var transport = new HttpClientTransport(
+                new HttpClientTransportOptions
+                {
+                    Endpoint = new Uri(options.Endpoint)
+                });
+
+            return McpClient
+                .CreateAsync(transport)
+                .GetAwaiter()
+                .GetResult();
+        }); 
+
+        // Adapter
+        services.AddSingleton<IToolClient, McpToolClient>();
+
+        // Policy
+        services.AddSingleton(new RetryPolicy(maxAttempts: 3));
+
+        // Runtime
+        services.AddSingleton<ToolInvoker>();
+
+        // Application Service
         services.AddSingleton<CloudPrintMcpService>();
 
-        services.AddSingleton<TestWorkflow>();
+        //services.AddSingleton<TestWorkflow>();
 
         return services;
     } 

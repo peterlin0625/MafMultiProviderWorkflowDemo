@@ -1,64 +1,38 @@
-﻿using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using ModelContextProtocol.Client;
-using ModelContextProtocol;
-using MafDemo.McpClientApp.Options;
+﻿using MafDemo.McpClientApp.Domain;
+using MafDemo.McpClientApp.Runtime;
+using System;
+using System.Collections.Generic;
+using System.Text;
 
 namespace MafDemo.McpClientApp.Services;
 
-public class CloudPrintMcpService
+public sealed class CloudPrintMcpService
 {
-    private readonly CloudPrintMcpClientOptions _options;
-    private readonly ILogger<CloudPrintMcpService> _logger;
-    private readonly McpClient _innerClient;
+    private readonly ToolInvoker _toolInvoker;
 
-    public CloudPrintMcpService(
-        IOptions<CloudPrintMcpClientOptions> opt,
-        ILogger<CloudPrintMcpService> logger)
+    public CloudPrintMcpService(ToolInvoker toolInvoker)
     {
-        _options = opt.Value;
-        _logger = logger;
-
-        var transport = new HttpClientTransport(new HttpClientTransportOptions
-        {
-            Endpoint = new Uri(_options.Endpoint)
-        });
-
-        _innerClient = McpClient.CreateAsync(transport).GetAwaiter().GetResult();
+        _toolInvoker = toolInvoker;
     }
 
-    public async Task<object?> CallToolAsync(
-        string toolName,
-        IReadOnlyDictionary<string, object?>? arguments = null,
-        CancellationToken cancellationToken = default)
+    public async Task<object> GetServerTimeAsync(
+    CancellationToken cancellationToken)
     {
-        _logger.LogInformation("呼叫 MCP Tool: {Tool}", toolName);
+        var toolCallId = $"tool-{Guid.NewGuid():N}";
 
-        var retries = _options.RetryCount + 1;
+        var context = new ToolCallContext(
+            toolCallId: toolCallId,
+            toolName: "getServerTime",
+            isSideEffect: false,
+            idempotencyExpected: true
+        );
 
-        for (int i = 1; i <= retries; i++)
-        {
-            try
-            {
-                var result = await _innerClient.CallToolAsync(
-                        toolName: toolName,
-                        arguments: arguments,
-                        progress: null,
-                        options: null,
-                        cancellationToken: cancellationToken);
+        IReadOnlyDictionary<string, object?> arguments =
+            new Dictionary<string, object?>();
 
-                _logger.LogInformation("MCP Tool {Tool} 呼叫成功。", toolName);
-                return result;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "MCP Tool 呼叫失敗，第 {Try}/{Max}", i, retries);
-                if (i == retries)
-                    throw;
-                await Task.Delay(_options.TimeoutSeconds, cancellationToken);
-            }
-        }
-
-        return null;
+        return await _toolInvoker.InvokeAsync(
+            context,
+            arguments,
+            cancellationToken);
     }
 }
