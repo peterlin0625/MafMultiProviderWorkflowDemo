@@ -4,24 +4,26 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
-namespace MafDemo.McpClientApp.Services;
+namespace MafDemo.McpClientApp.Workflows;
 
-public sealed class CloudPrintMcpService
+public sealed class GetServerTimeWorkflow
+    : WorkflowBase<DateTimeOffset>
 {
-    private readonly ToolInvoker _toolInvoker;
-
-    public CloudPrintMcpService(ToolInvoker toolInvoker)
+    public GetServerTimeWorkflow(
+        ToolInvoker toolInvoker,
+        WorkflowContext workflowContext)
+        : base(toolInvoker, workflowContext)
     {
-        _toolInvoker = toolInvoker;
     }
 
-    public async Task<object> GetServerTimeAsync(
-    CancellationToken cancellationToken)
+    protected override async Task<DateTimeOffset> ExecuteInternalAsync(
+        CancellationToken cancellationToken)
     {
         var toolCallId = $"tool-{Guid.NewGuid():N}";
 
         var context = new ToolCallContext(
             toolCallId: toolCallId,
+            correlationId: WorkflowContext.CorrelationId,
             toolName: "getServerTime",
             isSideEffect: false,
             idempotencyExpected: true
@@ -30,9 +32,11 @@ public sealed class CloudPrintMcpService
         IReadOnlyDictionary<string, object?> arguments =
             new Dictionary<string, object?>();
 
-        return await _toolInvoker.InvokeAsync(
+        var result = await ToolInvoker.InvokeAsync(
             context,
             arguments,
             cancellationToken);
+
+        return DateTimeOffset.Parse(result.ToString()!);
     }
 }

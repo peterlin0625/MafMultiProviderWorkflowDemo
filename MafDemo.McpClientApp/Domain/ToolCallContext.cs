@@ -33,7 +33,7 @@ public sealed class ToolCallContext
 {
     /// <summary>工具呼叫實例的唯一識別碼。</summary>
     public string ToolCallId { get; }
-
+    public string CorrelationId { get; }
     /// <summary>被呼叫工具的邏輯名稱。</summary>
     public string ToolName { get; }
 
@@ -66,11 +66,13 @@ public sealed class ToolCallContext
     /// <param name="idempotencyExpected">呼叫方是否期望該操作為冪等。</param>
     public ToolCallContext(
         string toolCallId,
+        string correlationId,
         string toolName,
         bool isSideEffect,
         bool idempotencyExpected)
     {
         ToolCallId = toolCallId;
+        CorrelationId = correlationId;
         ToolName = toolName;
         IsSideEffect = isSideEffect;
         IdempotencyExpected = idempotencyExpected;

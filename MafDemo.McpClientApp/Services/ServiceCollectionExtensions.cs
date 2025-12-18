@@ -3,6 +3,7 @@ using MafDemo.McpClientApp.Options;
 using MafDemo.McpClientApp.Policies;
 using MafDemo.McpClientApp.Runtime;
 using MafDemo.McpClientApp.Services;
+using MafDemo.McpClientApp.Workflows;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -48,10 +49,10 @@ public static class ServiceCollectionExtensions
         // Runtime
         services.AddSingleton<ToolInvoker>();
 
-        // Application Service
-        services.AddSingleton<CloudPrintMcpService>();
 
-        //services.AddSingleton<TestWorkflow>();
+        // Workflow factory（每次執行一個）
+        services.AddTransient<WorkflowContext>();
+        services.AddTransient<GetServerTimeWorkflow>();
 
         return services;
     } 
