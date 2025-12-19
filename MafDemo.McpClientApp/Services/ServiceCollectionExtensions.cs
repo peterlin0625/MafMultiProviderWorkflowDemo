@@ -1,4 +1,8 @@
 ﻿using MafDemo.McpClientApp.Adapters;
+using MafDemo.McpClientApp.Agents;
+using MafDemo.McpClientApp.Audit;
+using MafDemo.McpClientApp.HumanInLoop;
+using MafDemo.McpClientApp.Llm;
 using MafDemo.McpClientApp.Options;
 using MafDemo.McpClientApp.Policies;
 using MafDemo.McpClientApp.Runtime;
@@ -51,8 +55,31 @@ public static class ServiceCollectionExtensions
 
 
         // Workflow factory（每次執行一個）
-        services.AddTransient<WorkflowContext>();
-        services.AddTransient<GetServerTimeWorkflow>();
+        services.AddTransient<IWorkflowDefinition, GetServerTimeWorkflow>();
+        services.AddTransient<IWorkflowDefinition, CreatePrintJobWorkflow>();
+
+        // LLM options
+        services.Configure<LlmOptions>(
+            config.GetSection("Llm"));
+
+        // LLM HttpClient
+        services.AddHttpClient<ILlmClient, OpenAiLlmClient>();
+
+
+        // Fallback
+        services.AddSingleton<AgentFallbackPolicy>();
+
+        // Audit
+        services.AddSingleton<IWorkflowDecisionStore,
+            InMemoryWorkflowDecisionStore>();
+
+        // Human-in-the-loop
+        services.AddSingleton<IUserConfirmationService,
+            ConsoleUserConfirmationService>();
+
+
+        // Agent
+        services.AddSingleton<CloudPrintAgent>();
 
         return services;
     } 

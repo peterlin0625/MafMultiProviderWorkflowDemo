@@ -9,6 +9,18 @@ namespace MafDemo.McpClientApp.Workflows;
 public sealed class GetServerTimeWorkflow
     : WorkflowBase<DateTimeOffset>
 {
+    public override string Name => "GetServerTimeWorkflow";
+
+    public override string Description =>
+        "Query current server time. No side effects.";
+
+    public override bool AllowLlmInvocation => true;
+
+    public override bool IsHighRisk => false;
+
+    public override IReadOnlyList<string> RequiredArguments =>
+        Array.Empty<string>();
+
     public GetServerTimeWorkflow(
         ToolInvoker toolInvoker,
         WorkflowContext workflowContext)
@@ -17,7 +29,8 @@ public sealed class GetServerTimeWorkflow
     }
 
     protected override async Task<DateTimeOffset> ExecuteInternalAsync(
-        CancellationToken cancellationToken)
+       IReadOnlyDictionary<string, object?> arguments,
+       CancellationToken cancellationToken)
     {
         var toolCallId = $"tool-{Guid.NewGuid():N}";
 
@@ -27,10 +40,7 @@ public sealed class GetServerTimeWorkflow
             toolName: "getServerTime",
             isSideEffect: false,
             idempotencyExpected: true
-        );
-
-        IReadOnlyDictionary<string, object?> arguments =
-            new Dictionary<string, object?>();
+        ); 
 
         var result = await ToolInvoker.InvokeAsync(
             context,
