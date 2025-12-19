@@ -1,4 +1,5 @@
-﻿using ModelContextProtocol.Client;
+﻿using MafDemo.McpClientApp.Observability;
+using ModelContextProtocol.Client;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -20,6 +21,7 @@ public sealed class McpToolClient : IToolClient
         string toolCallId,
         CancellationToken cancellationToken)
     {
+        
         return await _client.CallToolAsync(
             toolName: toolName,
             arguments: arguments,

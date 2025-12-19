@@ -2,6 +2,7 @@
 using MafDemo.McpClientApp.Audit;
 using MafDemo.McpClientApp.HumanInLoop;
 using MafDemo.McpClientApp.Llm;
+using MafDemo.McpClientApp.Observability;
 using MafDemo.McpClientApp.Workflows;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -17,7 +18,7 @@ public sealed class CloudPrintAgent
 
     // 【新增②】Workflow Decision Audit Store
     private readonly IWorkflowDecisionStore _decisionStore;
-
+    private readonly IWorkflowAuditSink _auditSink;
     // 【新增③】Workflow Guardrail
     private readonly WorkflowGuard _guard;
 
@@ -33,7 +34,7 @@ public sealed class CloudPrintAgent
 
         // 【新增②】
         IWorkflowDecisionStore decisionStore,
-
+        IWorkflowAuditSink auditSink,
         // 【新增③】
         WorkflowGuard guard,
 
@@ -44,6 +45,7 @@ public sealed class CloudPrintAgent
         _llmClient = llmClient;
         _fallbackPolicy = fallbackPolicy;
         _decisionStore = decisionStore;
+        _auditSink = auditSink;
         _guard = guard;
         _confirmation = confirmation;
     }
@@ -52,6 +54,13 @@ public sealed class CloudPrintAgent
         string userInput,
         CancellationToken cancellationToken)
     {
+        // =========================================================
+        // Step 0. 建立 CorrelationId（★ NEW：唯一來源）
+        // =========================================================
+        var correlationId = Guid.NewGuid().ToString("N");
+
+        using var _ = CorrelationContext.Begin(correlationId);
+
         // === Step 0. 取得所有 Workflow 定義 ===
         var workflows = _sp
             .GetServices<IWorkflowDefinition>()
@@ -89,6 +98,14 @@ public sealed class CloudPrintAgent
 
         } while (_fallbackPolicy.CanRetry(attempt));
 
+        // ★ NEW：Decision 失敗也要 Audit
+        await _auditSink.WriteAsync(new WorkflowAuditEvent
+        {
+            CorrelationId = correlationId,
+            Phase = "DecisionFailed",
+            Payload = lastError?.Message
+        });
+
         throw new InvalidOperationException(
             "LLM decision failed after retries.",
             lastError);
@@ -101,6 +118,14 @@ public sealed class CloudPrintAgent
             userInput: userInput,
             decision: decision,
             decidedAt: DateTimeOffset.UtcNow);
+
+        await _auditSink.WriteAsync(new WorkflowAuditEvent
+        {
+            CorrelationId = correlationId,
+            WorkflowName = decision.Workflow,
+            Phase = "Decision",
+            Payload = decision
+        });
 
         // === Step 4. 對應 Workflow（既有，但現在更明確）===
         var workflow = workflows
@@ -123,9 +148,37 @@ public sealed class CloudPrintAgent
                     "Workflow execution cancelled by user.");
         }
 
-        // === Step 7. Execute Workflow（既有核心行為）===
-        // 注意：Agent 仍然不知道 Workflow 內部怎麼做
-        return await ((dynamic)workflow)
-            .ExecuteAsync(decision.Arguments, cancellationToken);
+
+        // =========================================================
+        // Step 8. Execute Workflow
+        // =========================================================
+        try
+        {
+            var result = await ((dynamic)workflow)
+                .ExecuteAsync(decision.Arguments, cancellationToken);
+
+            // ★ NEW：Execution Audit
+            await _auditSink.WriteAsync(new WorkflowAuditEvent
+            {
+                CorrelationId = correlationId,
+                WorkflowName = workflow.Name,
+                Phase = "Execution"
+            });
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            // ★ NEW：Execution Failed Audit
+            await _auditSink.WriteAsync(new WorkflowAuditEvent
+            {
+                CorrelationId = correlationId,
+                WorkflowName = workflow.Name,
+                Phase = "ExecutionFailed",
+                Payload = ex.Message
+            });
+
+            throw;
+        }
     }
 }

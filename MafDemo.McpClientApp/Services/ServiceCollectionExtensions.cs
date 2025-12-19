@@ -3,6 +3,7 @@ using MafDemo.McpClientApp.Agents;
 using MafDemo.McpClientApp.Audit;
 using MafDemo.McpClientApp.HumanInLoop;
 using MafDemo.McpClientApp.Llm;
+using MafDemo.McpClientApp.Observability;
 using MafDemo.McpClientApp.Options;
 using MafDemo.McpClientApp.Policies;
 using MafDemo.McpClientApp.Runtime;
@@ -25,9 +26,15 @@ public static class ServiceCollectionExtensions
         services.Configure<CloudPrintMcpClientOptions>(
             config.GetSection("CloudPrint:McpClient"));
 
+        services.AddHttpClient("McpClient")
+            .AddHttpMessageHandler<CorrelationIdHandler>();
+
         // MCP Client  
         services.AddSingleton<McpClient>(sp =>
         {
+            var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
+            var httpClient = httpClientFactory.CreateClient("McpClient");
+
             var options = sp
                 .GetRequiredService<IOptions<CloudPrintMcpClientOptions>>()
                 .Value;
@@ -36,7 +43,8 @@ public static class ServiceCollectionExtensions
                 new HttpClientTransportOptions
                 {
                     Endpoint = new Uri(options.Endpoint)
-                });
+                },
+                httpClient);
 
             return McpClient
                 .CreateAsync(transport)
@@ -77,6 +85,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IUserConfirmationService,
             ConsoleUserConfirmationService>();
 
+
+        services.AddTransient<CorrelationIdHandler>();
 
         // Agent
         services.AddSingleton<CloudPrintAgent>();
