@@ -1,13 +1,19 @@
-﻿using CloudPrint.McpServer.DataApi;
+﻿using CloudPrint.McpServer.Audit;
+using CloudPrint.McpServer.DataApi;
+using CloudPrint.McpServer.Logging;
+using CloudPrint.McpServer.Middleware;
+using CloudPrint.McpServer.Observability;
+using CloudPrint.McpServer.Observability.Serilog;
+using CloudPrint.McpServer.Services;
 using MafDemo.McpServer.Options;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
-using CloudPrint.McpServer.Services;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.AspNetCore;
+using Serilog;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -18,10 +24,34 @@ using static Microsoft.AspNetCore.Http.Results;
 
 var builder = WebApplication.CreateBuilder(args);
 
-
+builder.ConfigureSerilog();
 
 // 註冊 Style 相關服務（包含 StyleApiClient）
-builder.Services.AddStyleServices(builder.Configuration);
+//builder.Services.AddStyleServices(builder.Configuration);
+
+Log.Logger = new LoggerConfiguration()
+       .MinimumLevel.Information()
+       .Enrich.FromLogContext()
+       .WriteTo.Console()
+       // Elastic（正式環境）
+       //.WriteTo.Elasticsearch(new ElasticsearchSinkOptions(
+       //    new Uri("http://localhost:9200"))
+       //{
+       //    IndexFormat = "cloudprint-mcp-audit-{0:yyyy.MM.dd}"
+       //})
+       .CreateLogger();
+
+builder.Host.UseSerilog((ctx, services, cfg) =>
+{
+    cfg
+        .ReadFrom.Configuration(ctx.Configuration)
+        .ReadFrom.Services(services)
+        .Enrich.FromLogContext()
+        .Enrich.With(new CorrelationIdEnricher())
+        .Enrich.With(new ToolCallIdEnricher())
+        .WriteTo.Console();
+});
+
 
 // 註冊所有 MCP Tools
 builder.Services
@@ -37,7 +67,20 @@ builder.WebHost.ConfigureKestrel(options =>
     });
 });
 
+// Audit Sink（正式）
+builder.Services.AddSingleton<IToolExecutionAuditSink,
+    SerilogToolExecutionAuditSink>();
+
 var app = builder.Build();
+
+var toolCallAccessor =
+    app.Services.GetRequiredService<ToolCallContextAccessor>();
+
+ToolCallContextAccessorHolder.Current = toolCallAccessor;
+
+app.UseMiddleware<CorrelationIdMiddleware>(); 
+app.UseMiddleware<ToolCallContextMiddleware>();
+app.UseMiddleware<ToolExecutionMiddleware>();
 
 // MCP Endpoint: /mcp
 app.MapMcp("/mcp");
