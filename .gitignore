@@ -362,3 +362,6 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 /MafDemo.McpClientApp/Services/CloudPrintMcpService.old
+/MafDemo.McpClientApp/Audit/InMemoryWorkflowAuditSink.xcs
+/MafDemo.McpClientApp/Audit/WorkflowAuditEvent.xcs
+/MafDemo.McpClientApp/Audit/IWorkflowAuditSink.xcs
