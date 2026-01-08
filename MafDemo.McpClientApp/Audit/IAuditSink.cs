@@ -3,7 +3,8 @@ using System.Collections.Generic;
 using System.Text;
 
 namespace MafDemo.McpClientApp.Audit;
-public interface IWorkflowAuditSink
+
+public interface IAuditSink
 {
-    Task WriteAsync(WorkflowAuditEvent evt);
+    Task WriteAsync(AuditEvent evt);
 }

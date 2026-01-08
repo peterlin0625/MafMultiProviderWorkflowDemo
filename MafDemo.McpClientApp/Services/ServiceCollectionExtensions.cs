@@ -1,6 +1,8 @@
 ﻿using MafDemo.McpClientApp.Adapters;
 using MafDemo.McpClientApp.Agents;
 using MafDemo.McpClientApp.Audit;
+using MafDemo.McpClientApp.Domain.DomainGate;
+using MafDemo.McpClientApp.Gates.Policy;
 using MafDemo.McpClientApp.HumanInLoop;
 using MafDemo.McpClientApp.Llm;
 using MafDemo.McpClientApp.Observability;
@@ -50,7 +52,19 @@ public static class ServiceCollectionExtensions
                 .CreateAsync(transport)
                 .GetAwaiter()
                 .GetResult();
-        }); 
+        });
+
+        // === Domain Gate (Phase 1: Rule-based) ===
+        services.AddSingleton<IDomainGate, DomainGateEvaluator>();
+
+        // === Policy Gate (Phase 1+2) ===
+        services.Configure<PolicyGateOptions>(
+            config.GetSection(PolicyGateOptions.SectionName));
+
+        services.AddSingleton<PolicyDecisionComposer>();
+        services.AddSingleton<IPolicyLlmAdvisor, PolicyLlmAdvisor>();
+
+        services.AddSingleton<IPolicyGate, PolicyGateEvaluator>();
 
         // Adapter
         services.AddSingleton<IToolClient, McpToolClient>();
@@ -80,6 +94,19 @@ public static class ServiceCollectionExtensions
         // Audit
         services.AddSingleton<IWorkflowDecisionStore,
             InMemoryWorkflowDecisionStore>();
+
+        //改成 Composite Sink
+        services.AddSingleton<InMemoryAuditSink>();
+        services.AddSingleton<SerilogAuditSink>();
+
+        services.AddSingleton<IAuditSink>(sp =>
+            new CompositeAuditSink(new IAuditSink[]
+            {
+        sp.GetRequiredService<InMemoryAuditSink>(),
+        sp.GetRequiredService<SerilogAuditSink>()
+            }));
+
+
 
         // Human-in-the-loop
         services.AddSingleton<IUserConfirmationService,

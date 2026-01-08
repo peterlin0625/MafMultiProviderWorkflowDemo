@@ -1,6 +1,8 @@
 ﻿using MafDemo.McpClientApp.Adapters;
 using MafDemo.McpClientApp.Domain;
+using MafDemo.McpClientApp.Observability;
 using MafDemo.McpClientApp.Policies;
+using Serilog.Context;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -29,14 +31,29 @@ public sealed class ToolInvoker
             {
                 context.MarkAttempt();
 
-                var result = await _toolClient.CallAsync(
-                    context.ToolName,
-                    arguments,
-                    context.ToolCallId,
-                    ct);
+                using (ToolCallContextAccessor.Begin(context))
+                using (LogContext.PushProperty("toolCallId", context.ToolCallId))
+                using (LogContext.PushProperty("toolName", context.ToolName))
+                {
+                    var result = await _toolClient.CallAsync(
+                        context.ToolName,
+                        arguments,
+                        context.ToolCallId,
+                        ct);
 
-                context.MarkSuccess();
-                return result;
+                    context.MarkSuccess();
+                    return result;
+                }
+
+
+                //var result = await _toolClient.CallAsync(
+                //    context.ToolName,
+                //    arguments,
+                //    context.ToolCallId,
+                //    ct);
+
+                //context.MarkSuccess();
+                //return result;
             }
             catch (Exception ex)
             {

@@ -14,7 +14,15 @@ public sealed class CorrelationIdHandler : DelegatingHandler
         if (!string.IsNullOrWhiteSpace(correlationId))
         {
             request.Headers.Remove("X-Correlation-Id");
-            request.Headers.Add("X-Correlation-Id", correlationId);
+            request.Headers.Add("X-Correlation-Id", correlationId); 
+        }
+
+
+        // === ToolCallId ===
+        if (ToolCallContextAccessor.Current is { } ctx)
+        {
+            request.Headers.Remove("X-Tool-Call-Id");
+            request.Headers.Add("X-Tool-Call-Id", ctx.ToolCallId);
         }
 
         return base.SendAsync(request, cancellationToken);

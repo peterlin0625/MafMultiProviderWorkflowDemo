@@ -1,6 +1,7 @@
 ﻿using CloudPrint.McpServer.Observability;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Serilog.Context;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -31,44 +32,49 @@ public sealed class ToolCallContextMiddleware
         {
             await _next(context);
             return;
-        }
+        } 
+       
+        var toolCallId =
+        context.Request.Headers["X-Tool-Call-Id"].FirstOrDefault();
 
-        // 允許讀取 body 兩次
-        context.Request.EnableBuffering();
-
-        string? toolCallId = null;
-
-        try
+        // fallback：MCP JSON body
+        if (string.IsNullOrWhiteSpace(toolCallId)
+            && HttpMethods.IsPost(context.Request.Method))
         {
-            using var doc = await JsonDocument.ParseAsync(
-                context.Request.Body,
-                cancellationToken: context.RequestAborted);
+            context.Request.EnableBuffering();
+            try
+            {
+                using var doc = await JsonDocument.ParseAsync(
+                    context.Request.Body,
+                    cancellationToken: context.RequestAborted);
 
-            // MCP tool call id（依實際 MCP payload key 調整）
-            toolCallId =
-                doc.RootElement.TryGetProperty("id", out var id)
-                    ? id.GetString()
-                    : null;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "Failed to parse MCP request body.");
-        }
-        finally
-        {
-            context.Request.Body.Position = 0;
+                toolCallId =
+                    doc.RootElement.TryGetProperty("id", out var id)
+                        ? id.GetString()
+                        : null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Failed to parse MCP request body.");
+            }
+            finally
+            {
+                context.Request.Body.Position = 0;
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(toolCallId))
         {
-            var correlationId = CorrelationContext.Current
+            var correlationId =
+                context.Request.Headers["X-Correlation-Id"].FirstOrDefault()
                 ?? Guid.NewGuid().ToString("N");
 
-            using var _ = _accessor.Begin(
-                new ToolCallContext(toolCallId, correlationId));
-
-            await _next(context);
-            return;
+            using (LogContext.PushProperty("toolCallId", toolCallId))
+            using (_accessor.Begin(new ToolCallContext(toolCallId, correlationId)))
+            {
+                await _next(context);
+                return;
+            }
         }
 
         await _next(context);

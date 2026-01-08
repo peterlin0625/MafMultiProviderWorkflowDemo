@@ -1,10 +1,14 @@
 ﻿using MafDemo.McpClientApp.Agents;
 using MafDemo.McpClientApp.Audit;
+using MafDemo.McpClientApp.Domain.DomainGate;
+using MafDemo.McpClientApp.Gates.Policy;
 using MafDemo.McpClientApp.HumanInLoop;
 using MafDemo.McpClientApp.Llm;
 using MafDemo.McpClientApp.Observability;
 using MafDemo.McpClientApp.Workflows;
 using Microsoft.Extensions.DependencyInjection;
+using MafDemo.McpClientApp.Gates.Policy;
+
 
 namespace MafDemo.McpClientApp.Agents;
 
@@ -12,13 +16,16 @@ public sealed class CloudPrintAgent
 {
     private readonly IServiceProvider _sp;
     private readonly ILlmClient _llmClient;
+    private readonly IDomainGate _domainGate;
+
+    private readonly IPolicyGate _policyGate;
 
     // 【新增①】LLM 決策 fallback / retry policy
     private readonly AgentFallbackPolicy _fallbackPolicy;
 
     // 【新增②】Workflow Decision Audit Store
     private readonly IWorkflowDecisionStore _decisionStore;
-    private readonly IWorkflowAuditSink _auditSink;
+    private readonly IAuditSink _auditSink;
     // 【新增③】Workflow Guardrail
     private readonly WorkflowGuard _guard;
 
@@ -28,13 +35,15 @@ public sealed class CloudPrintAgent
     public CloudPrintAgent(
         IServiceProvider serviceProvider,
         ILlmClient llmClient,
+        IDomainGate domainGate,
+        IPolicyGate policyGate,
 
         // 【新增①】
         AgentFallbackPolicy fallbackPolicy,
 
         // 【新增②】
         IWorkflowDecisionStore decisionStore,
-        IWorkflowAuditSink auditSink,
+        IAuditSink auditSink,
         // 【新增③】
         WorkflowGuard guard,
 
@@ -43,6 +52,8 @@ public sealed class CloudPrintAgent
     {
         _sp = serviceProvider;
         _llmClient = llmClient;
+        _domainGate = domainGate;
+        _policyGate = policyGate;
         _fallbackPolicy = fallbackPolicy;
         _decisionStore = decisionStore;
         _auditSink = auditSink;
@@ -60,6 +71,68 @@ public sealed class CloudPrintAgent
         var correlationId = Guid.NewGuid().ToString("N");
 
         using var _ = CorrelationContext.Begin(correlationId);
+        using var __ = new CorrelationLoggingScope();
+
+        // =========================================================
+        // ★ Step 0.5 Domain Gate（NEW）
+        // =========================================================
+        var domainResult = _domainGate.Evaluate(userInput);
+
+        // ★ Audit: Domain Classification
+        await _auditSink.WriteAsync(new AuditEvent
+        {
+            CorrelationId = correlationId,
+            SubjectType = AuditSubjectType.DomainGate,
+            SubjectName = null,
+            Phase = "DomainClassification",
+            Payload = new
+            {
+                domainResult.Classification,
+                domainResult.Reason
+            }
+        }); 
+
+        switch (domainResult.Classification)
+        {
+            case DomainClassification.OutOfDomain:
+                return new
+                {
+                    Message = "This request is outside the CloudPrint service scope."
+                };
+
+            case DomainClassification.AdjacentDomain:
+                return new
+                {
+                    Message = "Could you clarify your printing-related needs?"
+                };
+
+            case DomainClassification.InDomain:
+                break; // 放行，進入原本流程
+        }
+
+        // =========================================================
+        // ★ Step 0.6 Safety / Policy Gate（NEW: Phase 1 Rule-first）
+        // =========================================================
+        var policyDecision = _policyGate.Evaluate(userInput, domainResult);
+
+        switch (policyDecision.Decision)
+        {
+            case PolicyDecisionKind.Blocked:
+                return new
+                {
+                    Message = "This request is not allowed by policy."
+                };
+
+            case PolicyDecisionKind.RequiresHumanReview:
+                return new
+                {
+                    Message = "This request requires human review before we can proceed."
+                };
+
+            case PolicyDecisionKind.Allowed:
+            default:
+                break; // 放行，進入既有流程
+        }
 
         // === Step 0. 取得所有 Workflow 定義 ===
         var workflows = _sp
@@ -99,9 +172,11 @@ public sealed class CloudPrintAgent
         } while (_fallbackPolicy.CanRetry(attempt));
 
         // ★ NEW：Decision 失敗也要 Audit
-        await _auditSink.WriteAsync(new WorkflowAuditEvent
+        await _auditSink.WriteAsync(new AuditEvent
         {
             CorrelationId = correlationId,
+            SubjectType = AuditSubjectType.Agent,
+            SubjectName = nameof(CloudPrintAgent),
             Phase = "DecisionFailed",
             Payload = lastError?.Message
         });
@@ -119,10 +194,11 @@ public sealed class CloudPrintAgent
             decision: decision,
             decidedAt: DateTimeOffset.UtcNow);
 
-        await _auditSink.WriteAsync(new WorkflowAuditEvent
+        await _auditSink.WriteAsync(new AuditEvent
         {
             CorrelationId = correlationId,
-            WorkflowName = decision.Workflow,
+            SubjectType = AuditSubjectType.Workflow,
+            SubjectName = decision.Workflow, 
             Phase = "Decision",
             Payload = decision
         });
@@ -158,10 +234,11 @@ public sealed class CloudPrintAgent
                 .ExecuteAsync(decision.Arguments, cancellationToken);
 
             // ★ NEW：Execution Audit
-            await _auditSink.WriteAsync(new WorkflowAuditEvent
+            await _auditSink.WriteAsync(new AuditEvent
             {
                 CorrelationId = correlationId,
-                WorkflowName = workflow.Name,
+                SubjectType = AuditSubjectType.Workflow,
+                SubjectName = workflow.Name, 
                 Phase = "Execution"
             });
 
@@ -170,10 +247,11 @@ public sealed class CloudPrintAgent
         catch (Exception ex)
         {
             // ★ NEW：Execution Failed Audit
-            await _auditSink.WriteAsync(new WorkflowAuditEvent
+            await _auditSink.WriteAsync(new AuditEvent
             {
                 CorrelationId = correlationId,
-                WorkflowName = workflow.Name,
+                SubjectType = AuditSubjectType.Workflow,
+                SubjectName = workflow.Name, 
                 Phase = "ExecutionFailed",
                 Payload = ex.Message
             });
